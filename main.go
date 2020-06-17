@@ -20,8 +20,11 @@ import (
 var token string
 
 var order int = 3
-// Cannot do [order]string https://stackoverflow.com/q/38362631
-var markov map[[3]string]string
+// This maps a sequence of strings (joined by a space) to a map of next words and frequencies
+var markov map[string]map[string]int
+
+// Maps channel ID to last words in that channel
+var channelLastWords map[string][]string
 
 var filterChars = regexp.MustCompile(`[^a-z0-9\s?]`)
 var getWord = regexp.MustCompile(`\w+|\?`)
@@ -56,6 +59,9 @@ func init() {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
+	markov = make(map[string]map[string]int)
+	channelLastWords = make(map[string][]string)
+
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		fmt.Println("error creating Discord session,", err)
@@ -77,17 +83,38 @@ func main() {
 	<-sc
 }
 
-func messageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	// Ignore bots
-	if m.Author.Bot {
+	if msg.Author.Bot {
 		return
 	}
 
-	// Learn
-	message := simplify(m.Content)
+	words := simplify(msg.Content)
+
+	// Message cannot be empty
+	if len(words) > 0 {
+		lastWords := channelLastWords[msg.ChannelID]
+		sequence := append(append(lastWords, "/"), words...)
+		for i, word := range sequence {
+			if i >= order {
+				context := strings.Join(sequence[i - order : i], " ")
+				frequencies, ok := markov[context]
+				if !ok {
+					frequencies = make(map[string]int)
+					markov[context] = frequencies
+				}
+				frequencies[word]++
+			}
+		}
+		if len(sequence) < order {
+			channelLastWords[msg.ChannelID] = sequence
+		} else {
+			channelLastWords[msg.ChannelID] = sequence[len(sequence) - order :]
+		}
+	}
 
 	// rand.Intn(2) == 0
-	if hasWord(message, "moofy") {
-		s.ChannelMessageSend(m.ChannelID, strings.Join(message, " "))
-	}
+	// if hasWord(words, "moofy") {
+	// 	session.ChannelMessageSend(msg.ChannelID, strings.Join(message, " "))
+	// }
 }
