@@ -16,7 +16,7 @@ import (
 	"github.com/SheepTester/baby-moofy/utils"
 )
 
-var channelLastWords *LastWordsComm
+var channelLastWords *ChannelComm
 var markovManager *markov.MarkovComm
 
 var order int
@@ -34,7 +34,7 @@ func Start(options *BotOptions) {
 
 	var err error
 
-	channelLastWords = NewLastWordsTracker()
+	channelLastWords = NewChannelData([]string{"/"})
 	defer channelLastWords.Close()
 
 	markovManager, err = markov.NewMarkovManagerFromFile(&markov.SaveOptions{
@@ -80,7 +80,11 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	lastWords := channelLastWords.Get(msg.ChannelID)
+	data := channelLastWords.Get(msg.ChannelID)
+	lastWords, ok := data.([]string)
+	if !ok {
+		fmt.Println("Didn't get a string splice??", data)
+	}
 	sequence := append(append(lastWords, words...), "/")
 	miniMarkov := make(markov.Markov)
 	for i, word := range sequence {
@@ -100,7 +104,7 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	} else {
 		contextWords = sequence[len(sequence)-order:]
 	}
-	channelLastWords.Save(msg.ChannelID, contextWords)
+	channelLastWords.Set(msg.ChannelID, contextWords)
 	markovManager.Add(miniMarkov)
 
 	context := strings.Join(contextWords[0:order], " ")

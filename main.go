@@ -26,5 +26,9 @@ func init() {
 }
 
 func main() {
-	bot.Start(path, token, order)
+	bot.Start(&bot.BotOptions{
+		MarkovPath: path,
+		Token: token,
+		MarkovOrder: order,
+	})
 }
