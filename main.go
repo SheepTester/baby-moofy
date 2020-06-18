@@ -28,7 +28,7 @@ var markov map[string]map[string]int
 // Maps channel ID to last words in that channel
 var channelLastWords map[string][]string
 
-var path string = "./data/frequencies-2.json"
+var path string = "./data/frequencies.json"
 var saveChannel chan map[string]map[string]int
 
 var filterChars = regexp.MustCompile(`[^a-z0-9\s?]`)
@@ -58,21 +58,14 @@ func generate(start string) string {
 
 // Thanks https://www.youtube.com/watch?v=LvgVSSpwND8 :D
 func markovSaver(channel <-chan map[string]map[string]int) {
-	file, err := os.Create(path)
-	if err != nil {
-		fmt.Println("Problem writing to frequencies JSON file,", err)
-		panic(err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "\t")
-
 	for markov := range channel {
-		err = encoder.Encode(markov)
+		file, err := json.MarshalIndent(markov, "", "\t")
+		if err == nil {
+			// 0644 is just some weird flags; they are not to be spoken of
+			err = ioutil.WriteFile(path, file, 0644)
+		}
 		if err != nil {
-			fmt.Println("Problem saving frequencies:", err)
+			fmt.Println("Problem saving frequencies to JSON file,", err)
 		}
 	}
 }
@@ -90,7 +83,7 @@ func init() {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	channelLastWords = make(map[string][]string)
+	channelLastWords = make(map[string][]string, 10)
 
 	data, err := ioutil.ReadFile(path)
   if err == nil {
