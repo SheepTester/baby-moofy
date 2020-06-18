@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"math/rand"
 	"time"
+	"io/ioutil"
+	"encoding/json"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -46,6 +48,15 @@ func hasWord(words []string, target string) bool {
 	return false
 }
 
+func saveMarkov() error {
+	file, err := json.MarshalIndent(markov, "", " ")
+	if err == nil {
+		// 0644 is just some weird flags; they are not to be spoken of
+		err = ioutil.WriteFile("./data/frequencies.json", file, 0644)
+	}
+	return err
+}
+
 func init() {
 	flag.StringVar(&token, "t", "", "Bot token")
 	flag.Parse()
@@ -59,12 +70,19 @@ func init() {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	markov = make(map[string]map[string]int)
 	channelLastWords = make(map[string][]string)
+
+	data, err := ioutil.ReadFile("./data/frequencies.json")
+  if err == nil {
+		err = json.Unmarshal(data, &markov)
+  }
+	if err != nil {
+		markov = make(map[string]map[string]int)
+	}
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
-		fmt.Println("error creating Discord session,", err)
+		fmt.Println("Problem creating Discord session,", err)
 		return
 	}
 
@@ -72,12 +90,12 @@ func main() {
 
 	err = dg.Open()
 	if err != nil {
-		fmt.Println("error opening connection,", err)
+		fmt.Println("Problem connecting,", err)
 		return
 	}
 	defer dg.Close()
 
-	fmt.Println("Bot is now running. Press CTRL-C to exit.")
+	fmt.Println("The bot RUNS. Press ctrl + C to terminate.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
@@ -110,6 +128,10 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 			channelLastWords[msg.ChannelID] = sequence
 		} else {
 			channelLastWords[msg.ChannelID] = sequence[len(sequence) - order :]
+		}
+		err := saveMarkov()
+		if err != nil {
+			fmt.Println("Problem saving frequencies:", err)
 		}
 	}
 

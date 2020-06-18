@@ -16,3 +16,6 @@
 
 # Discord bot token
 token.txt
+
+# Frequency data
+data/
