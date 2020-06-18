@@ -41,9 +41,10 @@ func generate(markov Markov, context string) string {
 		}
 		value := rand.Intn(total)
 		var next string
-		for next, frequency := range frequencies {
+		for nextWord, frequency := range frequencies {
 			value -= frequency
 			if value < 0 {
+				next = nextWord
 				break
 			}
 		}
@@ -53,7 +54,7 @@ func generate(markov Markov, context string) string {
 		}
 		next = " " + next
 		builder.WriteString(next)
-		context = strings.SplitN(current, " ", 2)[1] + next
+		context = strings.SplitN(context, " ", 2)[1] + next
 	}
 	return builder.String()
 }
@@ -240,9 +241,7 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	saveLastWords <- contextWords
 	markovAdderChannel <- miniMarkov
 
-	if rand.Intn(2) == 0 {
-		context <- strings.Join(contextWords, " ")
-		gen := <- generated
-		session.ChannelMessageSend(msg.ChannelID, gen)
-	}
+	context <- strings.Join(contextWords[0 : 2], " ") + " /"
+	gen := <- generated
+	session.ChannelMessageSend(msg.ChannelID, gen)
 }
