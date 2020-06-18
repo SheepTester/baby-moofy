@@ -25,22 +25,44 @@ var order int = 3
 // Maps a sequence of strings (joined by a space) to a map of next words and frequencies
 type Markov = map[string]map[string]int
 var markovAdderChannel chan<- Markov
+var context chan<- string
+var generated <-chan string
 
-func markovAdder(markov Markov, channel <-chan Markov, saveChannel chan<- Markov) {
-	for miniMarkov := range channel {
-		// Merge miniMarkov into big markov
-		for context, newFrequencies := range miniMarkov {
-			frequencies, ok := markov[context]
-			if !ok {
-				frequencies = make(map[string]int)
-				markov[context] = frequencies
+func generate(markov Markov, context string) string {
+	return "<todo>"
+}
+
+func markovAdder(markov Markov, channel <-chan Markov, contextChan <-chan string, generatedChan chan<- string) {
+	saveChannel := make(chan Markov, 100)
+	defer close(saveChannel)
+	go markovSaver(saveChannel)
+
+	for channel != nil || contextChan != nil {
+		select {
+		case miniMarkov, open := <- channel:
+			// Merge miniMarkov into big markov
+			for context, newFrequencies := range miniMarkov {
+				frequencies, ok := markov[context]
+				if !ok {
+					frequencies = make(map[string]int)
+					markov[context] = frequencies
+				}
+				for possibility, frequency := range newFrequencies {
+					frequencies[possibility] += frequency
+				}
 			}
-			for possibility, frequency := range newFrequencies {
-				frequencies[possibility] += frequency
+			saveChannel <- markov
+			if !open {
+				channel = nil
+			}
+		case context, open := <- contextChan:
+			generatedChan <- generate(markov, context)
+			if !open {
+				contextChan = nil
 			}
 		}
-		saveChannel <- markov
 	}
+	close(generatedChan)
 }
 
 var requestLastWords chan<- string
@@ -54,6 +76,7 @@ func lastWordsTracker(requestChan <-chan string, getChan chan<- []string, saveCh
 		getChan <- channelLastWords[channelID]
 		channelLastWords[channelID] = <- saveChan
 	}
+	close(getChan)
 }
 
 var filterChars = regexp.MustCompile(`[^a-z0-9\s?]`)
@@ -118,7 +141,6 @@ func main() {
 	requestLastWordsChan := make(chan string, 100)
 	defer close(requestLastWordsChan)
 	getLastWordsChan := make(chan []string, 100)
-	defer close(getLastWordsChan)
 	saveLastWordsChan := make(chan []string, 100)
 	defer close(saveLastWordsChan)
 	go lastWordsTracker(requestLastWordsChan, getLastWordsChan, saveLastWordsChan)
@@ -126,14 +148,14 @@ func main() {
 	getLastWords = getLastWordsChan
 	saveLastWords = saveLastWordsChan
 
-	saveChannel := make(chan Markov, 100)
-	defer close(saveChannel)
-	go markovSaver(saveChannel)
-
 	markovAdderBiChannel := make(chan Markov, 100)
+	contextChan := make(chan string, 100)
+	generatedChan := make(chan string, 100)
 	defer close(markovAdderBiChannel)
-	go markovAdder(markov, markovAdderBiChannel, saveChannel)
+	go markovAdder(markov, markovAdderBiChannel, contextChan, generatedChan)
 	markovAdderChannel = markovAdderBiChannel
+	context = contextChan
+	generated = generatedChan
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -168,6 +190,7 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
+	requestLastWords <- msg.ChannelID
 	lastWords := <- getLastWords
 	sequence := append(append(lastWords, "/"), words...)
 	miniMarkov := make(Markov)
@@ -182,14 +205,18 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 			frequencies[word]++
 		}
 	}
+	var contextWords []string
 	if len(sequence) < order {
-		saveLastWords <- sequence
+		contextWords = sequence
 	} else {
-		saveLastWords <- sequence[len(sequence) - order :]
+		contextWords = sequence[len(sequence) - order :]
 	}
+	saveLastWords <- contextWords
 	markovAdderChannel <- miniMarkov
 
-	// if rand.Intn(2) == 0 {
-	// 	session.ChannelMessageSend(msg.ChannelID, generate())
-	// }
+	if rand.Intn(2) == 0 {
+		context <- strings.Join(contextWords, " ")
+		gen := <- generated
+		session.ChannelMessageSend(msg.ChannelID, gen)
+	}
 }
