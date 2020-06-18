@@ -22,9 +22,11 @@ import (
 var token string
 
 var order int = 3
-var markovAdderChannel chan<- map[string]map[string]int
+// Maps a sequence of strings (joined by a space) to a map of next words and frequencies
+type Markov = map[string]map[string]int
+var markovAdderChannel chan<- Markov
 
-func markovAdder(markov map[string]map[string]int, channel <-chan map[string]map[string]int, saveChannel chan<- map[string]map[string]int) {
+func markovAdder(markov Markov, channel <-chan Markov, saveChannel chan<- Markov) {
 	for miniMarkov := range channel {
 		// Merge miniMarkov into big markov
 		for context, newFrequencies := range miniMarkov {
@@ -77,7 +79,7 @@ func hasWord(words []string, target string) bool {
 var path string = "./data/frequencies.json"
 
 // Thanks https://www.youtube.com/watch?v=LvgVSSpwND8 :D
-func markovSaver(channel <-chan map[string]map[string]int) {
+func markovSaver(channel <-chan Markov) {
 	for markov := range channel {
 		file, err := json.MarshalIndent(markov, "", "\t")
 		if err == nil {
@@ -103,8 +105,7 @@ func init() {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
-	// This maps a sequence of strings (joined by a space) to a map of next words and frequencies
-	markov := make(map[string]map[string]int)
+	markov := make(Markov)
 	data, err := ioutil.ReadFile(path)
   if err == nil {
 		err = json.Unmarshal(data, &markov)
@@ -125,11 +126,11 @@ func main() {
 	getLastWords = getLastWordsChan
 	saveLastWords = saveLastWordsChan
 
-	saveChannel := make(chan map[string]map[string]int, 100)
+	saveChannel := make(chan Markov, 100)
 	defer close(saveChannel)
 	go markovSaver(saveChannel)
 
-	markovAdderBiChannel := make(chan map[string]map[string]int, 100)
+	markovAdderBiChannel := make(chan Markov, 100)
 	defer close(markovAdderBiChannel)
 	go markovAdder(markov, markovAdderBiChannel, saveChannel)
 	markovAdderChannel = markovAdderBiChannel
@@ -169,7 +170,7 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 
 	lastWords := <- getLastWords
 	sequence := append(append(lastWords, "/"), words...)
-	miniMarkov := make(map[string]map[string]int)
+	miniMarkov := make(Markov)
 	for i, word := range sequence {
 		if i >= order {
 			context := strings.Join(sequence[i - order : i], " ")
