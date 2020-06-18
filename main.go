@@ -29,7 +29,33 @@ var context chan<- string
 var generated <-chan string
 
 func generate(markov Markov, context string) string {
-	return "<todo>"
+	var builder strings.Builder
+	for {
+		frequencies, ok := markov[context]
+		if !ok {
+			break
+		}
+		total := 0
+		for _, frequency := range frequencies {
+			total += frequency
+		}
+		value := rand.Intn(total)
+		var next string
+		for next, frequency := range frequencies {
+			value -= frequency
+			if value < 0 {
+				break
+			}
+		}
+		// A slash means a message break, so the generation is finished
+		if next == "/" {
+			break
+		}
+		next = " " + next
+		builder.WriteString(next)
+		context = strings.SplitN(current, " ", 2)[1] + next
+	}
+	return builder.String()
 }
 
 func markovAdder(markov Markov, channel <-chan Markov, contextChan <-chan string, generatedChan chan<- string) {
