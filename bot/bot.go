@@ -21,10 +21,16 @@ var markovManager *markov.MarkovComm
 
 var order int
 
-func Start(markovPath string, token string, markovOrder int) {
+type BotOptions struct {
+	MarkovPath string
+	Token string
+	MarkovOrder int
+}
+
+func Start(options *BotOptions) {
 	rand.Seed(time.Now().UnixNano())
 
-	order = markovOrder
+	order = options.MarkovOrder
 
 	var err error
 
@@ -32,7 +38,7 @@ func Start(markovPath string, token string, markovOrder int) {
 	defer channelLastWords.Close()
 
 	markovManager, err = markov.NewMarkovManagerFromFile(&markov.SaveOptions{
-		Path: markovPath,
+		Path: options.MarkovPath,
 		Delay: 10 * time.Second, // Save every 10 seconds
 	})
 	if err != nil {
@@ -41,20 +47,20 @@ func Start(markovPath string, token string, markovOrder int) {
 	}
 	defer markovManager.Close()
 
-	dg, err := discordgo.New("Bot " + token)
+	session, err := discordgo.New("Bot " + options.Token)
 	if err != nil {
 		fmt.Println("Problem creating Discord session,", err)
 		return
 	}
 
-	dg.AddHandler(MessageCreate)
+	session.AddHandler(MessageCreate)
 
-	err = dg.Open()
+	err = session.Open()
 	if err != nil {
 		fmt.Println("Problem connecting,", err)
 		return
 	}
-	defer dg.Close()
+	defer session.Close()
 
 	fmt.Println("The bot RUNS. Press ctrl + C to terminate.")
 	sc := make(chan os.Signal, 1)
@@ -99,6 +105,9 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 
 	context := strings.Join(contextWords[0:order], " ")
 	if gen := markovManager.Generate(context); gen != "" {
-		session.ChannelMessageSend(msg.ChannelID, gen)
+		mentionsMe := HasUser(msg.Mentions, session.State.User)
+		if mentionsMe {
+			session.ChannelMessageSend(msg.ChannelID, gen)
+		}
 	}
 }

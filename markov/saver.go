@@ -13,7 +13,6 @@ func MarkovSaver(path string, channel <-chan Markov) {
 		if err == nil {
 			// 0644 is just some weird flags; they are not to be spoken of
 			err = ioutil.WriteFile(path, file, 0644)
-			fmt.Println("Saved.")
 		} else {
 			fmt.Println("Problem saving frequencies to JSON file,", err)
 		}
