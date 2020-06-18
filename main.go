@@ -28,6 +28,9 @@ var markov map[string]map[string]int
 // Maps channel ID to last words in that channel
 var channelLastWords map[string][]string
 
+var path string = "./data/frequencies-2.json"
+var saveChannel chan map[string]map[string]int
+
 var filterChars = regexp.MustCompile(`[^a-z0-9\s?]`)
 var getWord = regexp.MustCompile(`\w+|\?`)
 
@@ -48,13 +51,30 @@ func hasWord(words []string, target string) bool {
 	return false
 }
 
-func saveMarkov() error {
-	file, err := json.MarshalIndent(markov, "", " ")
-	if err == nil {
-		// 0644 is just some weird flags; they are not to be spoken of
-		err = ioutil.WriteFile("./data/frequencies.json", file, 0644)
+func generate(start string) string {
+	//
+	return ""
+}
+
+// Thanks https://www.youtube.com/watch?v=LvgVSSpwND8 :D
+func markovSaver(channel <-chan map[string]map[string]int) {
+	file, err := os.Create(path)
+	if err != nil {
+		fmt.Println("Problem writing to frequencies JSON file,", err)
+		panic(err)
 	}
-	return err
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "\t")
+
+	for markov := range channel {
+		err = encoder.Encode(markov)
+		if err != nil {
+			fmt.Println("Problem saving frequencies:", err)
+		}
+	}
 }
 
 func init() {
@@ -72,13 +92,20 @@ func main() {
 
 	channelLastWords = make(map[string][]string)
 
-	data, err := ioutil.ReadFile("./data/frequencies.json")
+	data, err := ioutil.ReadFile(path)
   if err == nil {
 		err = json.Unmarshal(data, &markov)
-  }
-	if err != nil {
+		if err != nil {
+			fmt.Println("Problem parsing frequencies JSON,", err)
+			return
+		}
+  } else {
 		markov = make(map[string]map[string]int)
 	}
+
+	saveChannel = make(chan map[string]map[string]int)
+	go markovSaver(saveChannel)
+	defer close(saveChannel) // Probably not necessary but defer is sooo cool lol
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -129,14 +156,10 @@ func messageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		} else {
 			channelLastWords[msg.ChannelID] = sequence[len(sequence) - order :]
 		}
-		err := saveMarkov()
-		if err != nil {
-			fmt.Println("Problem saving frequencies:", err)
-		}
+		saveChannel <- markov
 	}
 
-	// rand.Intn(2) == 0
-	// if hasWord(words, "moofy") {
-	// 	session.ChannelMessageSend(msg.ChannelID, strings.Join(message, " "))
+	// if rand.Intn(2) == 0 {
+	// 	session.ChannelMessageSend(msg.ChannelID, generate())
 	// }
 }
