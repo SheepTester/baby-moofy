@@ -43,7 +43,7 @@ func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan stri
 				}
 			}
 			if saveChan != nil {
-				saveChan <- markov
+				saveChan <- CloneMarkov(markov)
 			}
 			if !open {
 				addChan = nil
