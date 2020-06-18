@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"math/rand"
+	"time"
 
 	"strings"
 
@@ -14,8 +16,8 @@ import (
 	"github.com/SheepTester/baby-moofy/utils"
 )
 
-var channelLastWords LastWordsComm
-var markovManager markov.MarkovComm
+var channelLastWords *LastWordsComm
+var markovManager *markov.MarkovComm
 
 var order int
 
@@ -24,10 +26,12 @@ func Start(markovPath string, token string, markovOrder int) {
 
 	order = markovOrder
 
+	var err error
+
 	channelLastWords = NewLastWordsTracker()
 	defer CloseLastWords(channelLastWords)
 
-	markovManager, err := markov.NewMarkovManagerFromFile(markovPath)
+	markovManager, err = markov.NewMarkovManagerFromFile(markovPath)
 	if err != nil {
 		fmt.Println("Problem loading frequencies JSON file:", err)
 		return
@@ -69,7 +73,7 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 
 	channelLastWords.Request <- msg.ChannelID
 	lastWords := <-channelLastWords.Get
-	sequence := append(append(lastWords, "/"), words...)
+	sequence := append(append(lastWords, words...), "/")
 	miniMarkov := make(markov.Markov)
 	for i, word := range sequence {
 		if i >= order {
@@ -91,7 +95,10 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	channelLastWords.Save <- contextWords
 	markovManager.Add <- miniMarkov
 
-	markovManager.Context <- strings.Join(contextWords[0:2], " ") + " /"
+	context := strings.Join(contextWords[0:order], " ")
+	markovManager.Context <- context
 	gen := <-markovManager.Generated
-	session.ChannelMessageSend(msg.ChannelID, gen)
+	if gen != "" {
+		session.ChannelMessageSend(msg.ChannelID, gen)
+	}
 }

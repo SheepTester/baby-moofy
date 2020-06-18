@@ -10,21 +10,26 @@ func lastWordsTracker(requestChan <-chan string, getChan chan<- []string, saveCh
 	// Maps channel ID to last words in that channel
 	channelLastWords := make(map[string][]string)
 	for channelID := range requestChan {
-		getChan <- channelLastWords[channelID]
+		lastWords, ok := channelLastWords[channelID]
+		if ok {
+			getChan <- lastWords
+		} else {
+			getChan <- []string{"/"}
+		}
 		channelLastWords[channelID] = <-saveChan
 	}
 	close(getChan)
 }
 
-func NewLastWordsTracker() LastWordsComm {
+func NewLastWordsTracker() *LastWordsComm {
 	requestChan := make(chan string, 100)
 	getChan := make(chan []string, 100)
 	saveChan := make(chan []string, 100)
 	go lastWordsTracker(requestChan, getChan, saveChan)
-	return LastWordsComm{requestChan, getChan, saveChan}
+	return &LastWordsComm{requestChan, getChan, saveChan}
 }
 
-func CloseLastWords(comm LastWordsComm) {
+func CloseLastWords(comm *LastWordsComm) {
 	close(comm.Request)
 	close(comm.Save)
 }

@@ -44,15 +44,15 @@ func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan stri
 	close(generatedChan)
 }
 
-func NewMarkovManager(markov Markov, savePath string) MarkovComm {
+func NewMarkovManager(markov Markov, savePath string) *MarkovComm {
 	addChan := make(chan Markov, 100)
 	contextChan := make(chan string, 100)
 	generatedChan := make(chan string, 100)
 	go markovManager(markov, addChan, contextChan, generatedChan, savePath)
-	return MarkovComm{addChan, contextChan, generatedChan}
+	return &MarkovComm{addChan, contextChan, generatedChan}
 }
 
-func NewMarkovManagerFromFile(path string) (comm MarkovComm, err error) {
+func NewMarkovManagerFromFile(path string) (comm *MarkovComm, err error) {
 	markov, err := LoadMarkov(path)
 	if err == nil {
 		comm = NewMarkovManager(markov, path)
@@ -60,7 +60,7 @@ func NewMarkovManagerFromFile(path string) (comm MarkovComm, err error) {
 	return
 }
 
-func CloseMarkovManager(comm MarkovComm) {
+func CloseMarkovManager(comm *MarkovComm) {
 	close(comm.Add)
 	close(comm.Context)
 }
