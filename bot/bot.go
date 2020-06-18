@@ -29,14 +29,14 @@ func Start(markovPath string, token string, markovOrder int) {
 	var err error
 
 	channelLastWords = NewLastWordsTracker()
-	defer CloseLastWords(channelLastWords)
+	defer channelLastWords.Close()
 
 	markovManager, err = markov.NewMarkovManagerFromFile(markovPath)
 	if err != nil {
 		fmt.Println("Problem loading frequencies JSON file:", err)
 		return
 	}
-	defer markov.CloseMarkovManager(markovManager)
+	defer markovManager.Close()
 
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
@@ -71,8 +71,7 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	channelLastWords.Request <- msg.ChannelID
-	lastWords := <-channelLastWords.Get
+	lastWords := channelLastWords.Get(msg.ChannelID)
 	sequence := append(append(lastWords, words...), "/")
 	miniMarkov := make(markov.Markov)
 	for i, word := range sequence {
@@ -92,13 +91,11 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	} else {
 		contextWords = sequence[len(sequence)-order:]
 	}
-	channelLastWords.Save <- contextWords
-	markovManager.Add <- miniMarkov
+	channelLastWords.Save(msg.ChannelID, contextWords)
+	markovManager.Add(miniMarkov)
 
 	context := strings.Join(contextWords[0:order], " ")
-	markovManager.Context <- context
-	gen := <-markovManager.Generated
-	if gen != "" {
+	if gen := markovManager.Generate(context); gen != "" {
 		session.ChannelMessageSend(msg.ChannelID, gen)
 	}
 }

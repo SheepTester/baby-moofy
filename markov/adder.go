@@ -1,9 +1,23 @@
 package markov
 
 type MarkovComm struct {
-	Add       chan<- Markov
-	Context   chan<- string
-	Generated <-chan string
+	add       chan<- Markov
+	context   chan<- string
+	generated <-chan string
+}
+
+func (comm *MarkovComm) Close() {
+	close(comm.add)
+	close(comm.context)
+}
+
+func (comm *MarkovComm) Add(miniMarkov Markov) {
+	comm.add <- miniMarkov
+}
+
+func (comm *MarkovComm) Generate(context string) string {
+	comm.context <- context
+	return <- comm.generated
 }
 
 func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan string, generatedChan chan<- string, savePath string) {
@@ -58,9 +72,4 @@ func NewMarkovManagerFromFile(path string) (comm *MarkovComm, err error) {
 		comm = NewMarkovManager(markov, path)
 	}
 	return
-}
-
-func CloseMarkovManager(comm *MarkovComm) {
-	close(comm.Add)
-	close(comm.Context)
 }
