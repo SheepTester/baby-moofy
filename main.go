@@ -28,7 +28,5 @@ func init() {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	bot.Start(path, token, order)
 }

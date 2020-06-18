@@ -20,6 +20,8 @@ var markovManager markov.MarkovComm
 var order int
 
 func Start(markovPath string, token string, markovOrder int) {
+	rand.Seed(time.Now().UnixNano())
+
 	order = markovOrder
 
 	channelLastWords = NewLastWordsTracker()
