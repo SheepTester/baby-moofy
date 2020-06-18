@@ -31,7 +31,10 @@ func Start(markovPath string, token string, markovOrder int) {
 	channelLastWords = NewLastWordsTracker()
 	defer channelLastWords.Close()
 
-	markovManager, err = markov.NewMarkovManagerFromFile(markovPath)
+	markovManager, err = markov.NewMarkovManagerFromFile(&markov.SaveOptions{
+		Path: markovPath,
+		Delay: 10 * time.Second, // Save every 10 seconds
+	})
 	if err != nil {
 		fmt.Println("Problem loading frequencies JSON file:", err)
 		return

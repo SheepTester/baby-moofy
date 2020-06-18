@@ -1,5 +1,9 @@
 package markov
 
+import (
+	"time"
+)
+
 type MarkovComm struct {
 	add       chan<- Markov
 	context   chan<- string
@@ -20,17 +24,34 @@ func (comm *MarkovComm) Generate(context string) string {
 	return <- comm.generated
 }
 
-func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan string, generatedChan chan<- string, savePath string) {
+type markovManagerComm struct {
+	add       <-chan Markov
+	context   <-chan string
+	generated chan<- string
+}
+
+type SaveOptions struct {
+	Path string
+	Delay time.Duration
+}
+
+func markovManager(markov Markov, comm *markovManagerComm, saveOpts *SaveOptions) {
 	var saveChan chan Markov
-	if savePath != "" {
+	var timer *time.Timer
+	var timerChan <-chan time.Time
+	if saveOpts != nil {
 		saveChan = make(chan Markov, 100)
 		defer close(saveChan)
-		go MarkovSaver(savePath, saveChan)
+		go MarkovSaver(saveOpts.Path, saveChan)
+
+		timer = time.NewTimer(saveOpts.Delay)
+		timerChan = timer.C
 	}
 
-	for addChan != nil || contextChan != nil {
+	needSaving := false
+	for comm.add != nil || comm.context != nil {
 		select {
-		case miniMarkov, open := <-addChan:
+		case miniMarkov, open := <-comm.add:
 			// Merge miniMarkov into big markov
 			for context, newFrequencies := range miniMarkov {
 				frequencies, ok := markov[context]
@@ -42,34 +63,50 @@ func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan stri
 					frequencies[possibility] += frequency
 				}
 			}
-			if saveChan != nil {
+			if !needSaving {
+				// Drain channel just in case
+				timer.Stop()
+				select {
+				case <-timerChan:
+				default:
+				}
+				timer.Reset(saveOpts.Delay)
+				needSaving = true
+			}
+			if !open {
+				comm.add = nil
+			}
+		case context, open := <-comm.context:
+			comm.generated <- Generate(markov, context)
+			if !open {
+				comm.context = nil
+			}
+		case <- timerChan:
+			if needSaving {
 				saveChan <- CloneMarkov(markov)
-			}
-			if !open {
-				addChan = nil
-			}
-		case context, open := <-contextChan:
-			generatedChan <- Generate(markov, context)
-			if !open {
-				contextChan = nil
+				needSaving = false
 			}
 		}
 	}
-	close(generatedChan)
+	// Save one last time
+	if saveOpts != nil {
+		saveChan <- CloneMarkov(markov)
+	}
+	close(comm.generated)
 }
 
-func NewMarkovManager(markov Markov, savePath string) *MarkovComm {
+func NewMarkovManager(markov Markov, saveOpts *SaveOptions) *MarkovComm {
 	addChan := make(chan Markov, 100)
 	contextChan := make(chan string, 100)
 	generatedChan := make(chan string, 100)
-	go markovManager(markov, addChan, contextChan, generatedChan, savePath)
+	go markovManager(markov, &markovManagerComm{addChan, contextChan, generatedChan}, saveOpts)
 	return &MarkovComm{addChan, contextChan, generatedChan}
 }
 
-func NewMarkovManagerFromFile(path string) (comm *MarkovComm, err error) {
-	markov, err := LoadMarkov(path)
+func NewMarkovManagerFromFile(saveOpts *SaveOptions) (comm *MarkovComm, err error) {
+	markov, err := LoadMarkov(saveOpts.Path)
 	if err == nil {
-		comm = NewMarkovManager(markov, path)
+		comm = NewMarkovManager(markov, saveOpts)
 	}
 	return
 }
