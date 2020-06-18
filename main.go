@@ -4,8 +4,8 @@ package main
 
 import (
 	"flag"
-	"os"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/SheepTester/baby-moofy/bot"

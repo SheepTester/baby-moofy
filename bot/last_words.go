@@ -2,16 +2,16 @@ package bot
 
 type LastWordsComm struct {
 	Request chan<- string
-	Get <-chan []string
-	Save chan<- []string
+	Get     <-chan []string
+	Save    chan<- []string
 }
 
-func lastWordsTracker(requestChan <-chan string, getChan chan<- []string, saveChan <-chan []string)  {
+func lastWordsTracker(requestChan <-chan string, getChan chan<- []string, saveChan <-chan []string) {
 	// Maps channel ID to last words in that channel
 	channelLastWords := make(map[string][]string)
 	for channelID := range requestChan {
 		getChan <- channelLastWords[channelID]
-		channelLastWords[channelID] = <- saveChan
+		channelLastWords[channelID] = <-saveChan
 	}
 	close(getChan)
 }

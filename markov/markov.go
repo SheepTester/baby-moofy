@@ -1,8 +1,8 @@
 package markov
 
 import (
-	"strings"
 	"math/rand"
+	"strings"
 )
 
 var order int = 3

@@ -1,8 +1,8 @@
 package markov
 
 type MarkovComm struct {
-	Add chan<- Markov
-	Context chan<- string
+	Add       chan<- Markov
+	Context   chan<- string
 	Generated <-chan string
 }
 
@@ -16,7 +16,7 @@ func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan stri
 
 	for addChan != nil || contextChan != nil {
 		select {
-		case miniMarkov, open := <- addChan:
+		case miniMarkov, open := <-addChan:
 			// Merge miniMarkov into big markov
 			for context, newFrequencies := range miniMarkov {
 				frequencies, ok := markov[context]
@@ -34,7 +34,7 @@ func markovManager(markov Markov, addChan <-chan Markov, contextChan <-chan stri
 			if !open {
 				addChan = nil
 			}
-		case context, open := <- contextChan:
+		case context, open := <-contextChan:
 			generatedChan <- Generate(markov, context)
 			if !open {
 				contextChan = nil
@@ -60,7 +60,7 @@ func NewMarkovManagerFromFile(path string) (comm MarkovComm, err error) {
 	return
 }
 
-func CloseMarkovManager(comm MarkovComm)  {
+func CloseMarkovManager(comm MarkovComm) {
 	close(comm.Add)
 	close(comm.Context)
 }

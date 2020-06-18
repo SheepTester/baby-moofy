@@ -50,7 +50,7 @@ func Start(markovPath string, token string, markovOrder int) {
 	fmt.Println("The bot RUNS. Press ctrl + C to terminate.")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-	<- sc
+	<-sc
 }
 
 func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
@@ -66,12 +66,12 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	}
 
 	channelLastWords.Request <- msg.ChannelID
-	lastWords := <- channelLastWords.Get
+	lastWords := <-channelLastWords.Get
 	sequence := append(append(lastWords, "/"), words...)
 	miniMarkov := make(markov.Markov)
 	for i, word := range sequence {
 		if i >= order {
-			context := strings.Join(sequence[i - order : i], " ")
+			context := strings.Join(sequence[i-order:i], " ")
 			frequencies, ok := miniMarkov[context]
 			if !ok {
 				frequencies = make(map[string]int)
@@ -84,12 +84,12 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	if len(sequence) < order {
 		contextWords = sequence
 	} else {
-		contextWords = sequence[len(sequence) - order :]
+		contextWords = sequence[len(sequence)-order:]
 	}
 	channelLastWords.Save <- contextWords
 	markovManager.Add <- miniMarkov
 
-	markovManager.Context <- strings.Join(contextWords[0 : 2], " ") + " /"
-	gen := <- markovManager.Generated
+	markovManager.Context <- strings.Join(contextWords[0:2], " ") + " /"
+	gen := <-markovManager.Generated
 	session.ChannelMessageSend(msg.ChannelID, gen)
 }

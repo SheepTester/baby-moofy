@@ -1,8 +1,8 @@
 package markov
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 )
 
