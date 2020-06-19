@@ -11,13 +11,15 @@ import (
 )
 
 var token string
-
-var path string = "./data/frequencies.json"
-
-var order int = 3
+var path string
+var order int
+var delay int64
 
 func init() {
 	flag.StringVar(&token, "t", "", "Bot token")
+	flag.StringVar(&path, "p", "", "Markov chain frequencies JSON file path")
+	flag.IntVar(&order, "o", 3, "Markov chain order")
+	flag.Int64Var(&delay, "d", 30, "Default delay in seconds per channel between contributions")
 	flag.Parse()
 
 	if token == "" {
@@ -31,6 +33,6 @@ func main() {
 		MarkovPath: path,
 		Token: token,
 		MarkovOrder: order,
-		DefaultDelay: 30 * time.Second, // May want to increase in the future
+		DefaultDelay: time.Duration(delay) * time.Second, // May want to increase in the future
 	})
 }
