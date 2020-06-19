@@ -37,9 +37,13 @@ func main() {
 			lastWords = total
 			fmt.Println("Insufficient context:", strings.Join(lastWords, " "))
 		} else {
-			lastWords = total[len(total) - order:]
-			gen := markov.GenerateLoud(markovFreqs, strings.Join(lastWords, " "))
+			total = total[len(total)-order:]
+			gen := markov.GenerateLoud(markovFreqs, strings.Join(total, " "))
 			fmt.Println(gen)
+			words = utils.Simplify(gen)
+			if len(words) > 0 {
+				lastWords = append(append(total, words...), "/")
+			}
 		}
 		fmt.Print("> ")
 	}

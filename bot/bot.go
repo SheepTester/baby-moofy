@@ -22,7 +22,7 @@ var markovManager *markov.MarkovComm
 
 var order int
 
-var delay time.Duration
+var defaultDelay time.Duration
 
 type BotOptions struct {
 	MarkovPath string
@@ -35,7 +35,7 @@ func Start(options *BotOptions) {
 	rand.Seed(time.Now().UnixNano())
 
 	order = options.MarkovOrder
-	delay = options.DefaultDelay
+	defaultDelay = options.DefaultDelay
 
 	var err error
 
@@ -76,9 +76,40 @@ func Start(options *BotOptions) {
 	<-sc
 }
 
+func trackWords(channelID string, words []string) ([]string, []string) {
+	data := channelLastWords.GetWillSet(channelID)
+	lastWords, ok := data.([]string)
+	if !ok {
+		fmt.Println("Didn't get a string splice??", data)
+		return nil, nil
+	}
+
+	sequence := append(append(lastWords, words...), "/")
+	var contextWords []string
+	if len(sequence) < order {
+		contextWords = sequence
+	} else {
+		contextWords = sequence[len(sequence)-order:]
+	}
+	channelLastWords.Set(channelID, contextWords)
+
+	return sequence, contextWords
+}
+
+func respond(session *discordgo.Session, msg *discordgo.MessageCreate, text string) {
+	session.ChannelMessageSend(msg.ChannelID, text)
+	nextContribution.Set(msg.ChannelID, time.Now().Add(defaultDelay))
+
+	words := utils.Simplify(text)
+	if len(words) > 0 {
+		// Update last words sent in channel
+		trackWords(msg.ChannelID, words)
+	}
+}
+
 func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
-	// Ignore bots
-	if msg.Author.Bot {
+	// Ignore self
+	if msg.Author.ID == session.State.User.ID {
 		return
 	}
 
@@ -88,37 +119,29 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	data := channelLastWords.GetWillSet(msg.ChannelID)
-	lastWords, ok := data.([]string)
-	if !ok {
-		fmt.Println("Didn't get a string splice??", data)
-	}
-	sequence := append(append(lastWords, words...), "/")
-	miniMarkov := make(markov.Markov)
-	for i, word := range sequence {
-		if i >= order {
-			context := strings.Join(sequence[i-order:i], " ")
-			frequencies, ok := miniMarkov[context]
-			if !ok {
-				frequencies = make(map[string]int)
-				miniMarkov[context] = frequencies
+	// Stores last words sent in channel
+	sequence, contextWords := trackWords(msg.ChannelID, words)
+
+	// Do not learn from bots
+	if !msg.Author.Bot {
+		miniMarkov := make(markov.Markov)
+		for i, word := range sequence {
+			if i >= order {
+				context := strings.Join(sequence[i-order:i], " ")
+				frequencies, ok := miniMarkov[context]
+				if !ok {
+					frequencies = make(map[string]int)
+					miniMarkov[context] = frequencies
+				}
+				frequencies[word]++
 			}
-			frequencies[word]++
 		}
+		markovManager.Add(miniMarkov)
 	}
-	var contextWords []string
-	if len(sequence) < order {
-		contextWords = sequence
-	} else {
-		contextWords = sequence[len(sequence)-order:]
-	}
-	channelLastWords.Set(msg.ChannelID, contextWords)
-	markovManager.Add(miniMarkov)
 
 	context := strings.Join(contextWords[0:order], " ")
 	if gen := markovManager.Generate(context); gen != "" {
 		mentionsMe := HasUser(msg.Mentions, session.State.User)
-		now := time.Now()
 		if !mentionsMe {
 			data := nextContribution.GetWillSet(msg.ChannelID)
 			nextTime, ok := data.(time.Time)
@@ -127,14 +150,13 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 			}
 			// Neither mentioned nor has there been ample time since the previous
 			// contribution, so do not speak
-			if now.Before(nextTime) {
+			if time.Now().Before(nextTime) {
 				// We promised a set earlier though, so we must fulfill it to unlock the
 				// channel data manager
 				nextContribution.Set(msg.ChannelID, nextTime)
 				return
 			}
 		}
-		session.ChannelMessageSend(msg.ChannelID, gen)
-		nextContribution.Set(msg.ChannelID, now.Add(delay))
+		respond(session, msg, gen)
 	}
 }
