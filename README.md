@@ -3,7 +3,7 @@ A Discord bot in Go that uses Markov chains and listens to conversations to lear
 
 ### Things to add
 
-- [ ] command for changing local delay (so allow frequent responses in a spam channel)
+- [x] command for changing local delay (so allow frequent responses in a spam channel)
 
 - [ ] save channel settings to JSON file
 
