@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"github.com/SheepTester/baby-moofy/bot"
 )
@@ -30,5 +31,6 @@ func main() {
 		MarkovPath: path,
 		Token: token,
 		MarkovOrder: order,
+		DefaultDelay: 30 * time.Second, // May want to increase in the future
 	})
 }

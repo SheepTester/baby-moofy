@@ -1,15 +1,20 @@
 package bot
 
 type ChannelComm struct {
-	request chan<- string
+	get chan<- *getRequest
 	data     <-chan interface{}
 	set    chan<- *setRequest
 }
 
 type dataManagerComm struct {
-	request <-chan string
+	get <-chan *getRequest
 	data     chan<- interface{}
 	set    <-chan *setRequest
+}
+
+type getRequest struct {
+	channelID string
+	willSet bool
 }
 
 type setRequest struct {
@@ -18,12 +23,17 @@ type setRequest struct {
 }
 
 func (comm *ChannelComm) Close() {
-	close(comm.request)
+	close(comm.get)
 	close(comm.set)
 }
 
 func (comm *ChannelComm) Get(channelID string) interface{} {
-	comm.request <- channelID
+	comm.get <- &getRequest{channelID, false}
+	return <- comm.data
+}
+
+func (comm *ChannelComm) GetWillSet(channelID string) interface{} {
+	comm.get <- &getRequest{channelID, true}
 	return <- comm.data
 }
 
@@ -34,32 +44,40 @@ func (comm *ChannelComm) Set(channelID string, data interface{}) {
 func channelDataManager(defaultValue interface{}, comm *dataManagerComm) {
 	// Maps channel ID to last words in that channel
 	data := make(map[string]interface{})
-	for comm.request != nil || comm.set != nil {
+	doSetRequest := func (request *setRequest, open bool) {
+		data[request.channelID] = request.data
+		if !open {
+			comm.set = nil
+		}
+	}
+	for comm.get != nil || comm.set != nil {
 		select {
-		case channelID, open := <-comm.request:
-			channelData, ok := data[channelID]
+		case request, open := <-comm.get:
+			channelData, ok := data[request.channelID]
 			if ok {
 				comm.data <- channelData
 			} else {
 				comm.data <- defaultValue
 			}
 			if !open {
-				comm.request = nil
+				comm.get = nil
 			}
-		case setRequest, open := <-comm.set:
-			data[setRequest.channelID] = setRequest.data
-			if !open {
-				comm.set = nil
+			// Avoid race conditions by waiting for a set before continuing
+			if request.willSet {
+				request, open := <-comm.set
+				doSetRequest(request, open)
 			}
+		case request, open := <-comm.set:
+			doSetRequest(request, open)
 		}
 	}
 	close(comm.data)
 }
 
 func NewChannelData(defaultValue interface{}) *ChannelComm {
-	requestChan := make(chan string, 100)
+	getChan := make(chan *getRequest, 100)
 	dataChan := make(chan interface{}, 100)
 	setChan := make(chan *setRequest, 100)
-	go channelDataManager(defaultValue, &dataManagerComm{requestChan, dataChan, setChan})
-	return &ChannelComm{requestChan, dataChan, setChan}
+	go channelDataManager(defaultValue, &dataManagerComm{getChan, dataChan, setChan})
+	return &ChannelComm{getChan, dataChan, setChan}
 }

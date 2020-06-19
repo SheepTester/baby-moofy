@@ -17,25 +17,33 @@ import (
 )
 
 var channelLastWords *ChannelComm
+var nextContribution *ChannelComm
 var markovManager *markov.MarkovComm
 
 var order int
+
+var delay time.Duration
 
 type BotOptions struct {
 	MarkovPath string
 	Token string
 	MarkovOrder int
+	DefaultDelay time.Duration
 }
 
 func Start(options *BotOptions) {
 	rand.Seed(time.Now().UnixNano())
 
 	order = options.MarkovOrder
+	delay = options.DefaultDelay
 
 	var err error
 
 	channelLastWords = NewChannelData([]string{"/"})
 	defer channelLastWords.Close()
+
+	nextContribution = NewChannelData(time.Now())
+	defer nextContribution.Close()
 
 	markovManager, err = markov.NewMarkovManagerFromFile(&markov.SaveOptions{
 		Path: options.MarkovPath,
@@ -80,7 +88,7 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	data := channelLastWords.Get(msg.ChannelID)
+	data := channelLastWords.GetWillSet(msg.ChannelID)
 	lastWords, ok := data.([]string)
 	if !ok {
 		fmt.Println("Didn't get a string splice??", data)
@@ -110,8 +118,23 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	context := strings.Join(contextWords[0:order], " ")
 	if gen := markovManager.Generate(context); gen != "" {
 		mentionsMe := HasUser(msg.Mentions, session.State.User)
-		if mentionsMe {
-			session.ChannelMessageSend(msg.ChannelID, gen)
+		now := time.Now()
+		if !mentionsMe {
+			data := nextContribution.GetWillSet(msg.ChannelID)
+			nextTime, ok := data.(time.Time)
+			if !ok {
+				fmt.Println("Didn't get a time??", data)
+			}
+			// Neither mentioned nor has there been ample time since the previous
+			// contribution, so do not speak
+			if now.Before(nextTime) {
+				// We promised a set earlier though, so we must fulfill it to unlock the
+				// channel data manager
+				nextContribution.Set(msg.ChannelID, nextTime)
+				return
+			}
 		}
+		session.ChannelMessageSend(msg.ChannelID, gen)
+		nextContribution.Set(msg.ChannelID, now.Add(delay))
 	}
 }
