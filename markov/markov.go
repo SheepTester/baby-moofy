@@ -18,6 +18,7 @@ func generate(markov Markov, context string, loud bool) string {
 	if loud {
 		fmt.Println("[begin]")
 	}
+	first := true
 	for {
 		frequencies, ok := markov[context]
 		if !ok {
@@ -46,9 +47,13 @@ func generate(markov Markov, context string, loud bool) string {
 		if next == "/" {
 			break
 		}
-		next = " " + next
-		builder.WriteString(next)
-		context = strings.SplitN(context, " ", 2)[1] + next
+		if first {
+			first = false
+			builder.WriteString(next)
+		} else {
+			builder.WriteString(" " + next)
+		}
+		context = strings.SplitN(context, " ", 2)[1] + " " + next
 	}
 	if loud {
 		fmt.Println("[end]")

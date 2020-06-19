@@ -76,7 +76,7 @@ func Start(options *BotOptions) {
 	<-sc
 }
 
-func trackWords(channelID string, words []string) ([]string, []string) {
+func trackWords(channelID string, words []string, merge bool) ([]string, []string) {
 	data := channelLastWords.GetWillSet(channelID)
 	lastWords, ok := data.([]string)
 	if !ok {
@@ -84,13 +84,11 @@ func trackWords(channelID string, words []string) ([]string, []string) {
 		return nil, nil
 	}
 
-	sequence := append(append(lastWords, words...), "/")
-	var contextWords []string
-	if len(sequence) < order {
-		contextWords = sequence
-	} else {
-		contextWords = sequence[len(sequence)-order:]
+	sequence := append(lastWords, words...)
+	if !merge {
+		sequence = append(sequence, "/")
 	}
+	contextWords := utils.LastN(sequence, order)
 	channelLastWords.Set(channelID, contextWords)
 
 	return sequence, contextWords
@@ -100,10 +98,10 @@ func respond(session *discordgo.Session, msg *discordgo.MessageCreate, text stri
 	session.ChannelMessageSend(msg.ChannelID, text)
 	nextContribution.Set(msg.ChannelID, time.Now().Add(defaultDelay))
 
-	words := utils.Simplify(text)
+	words, _ := utils.Simplify(text)
 	if len(words) > 0 {
 		// Update last words sent in channel
-		trackWords(msg.ChannelID, words)
+		trackWords(msg.ChannelID, words, false)
 	}
 }
 
@@ -113,14 +111,14 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	words := utils.Simplify(msg.Content)
+	words, trailing := utils.Simplify(msg.Content)
 	// Message cannot be empty
 	if len(words) == 0 {
 		return
 	}
 
 	// Stores last words sent in channel
-	sequence, contextWords := trackWords(msg.ChannelID, words)
+	sequence, contextWords := trackWords(msg.ChannelID, words, trailing)
 
 	// Do not learn from bots
 	if !msg.Author.Bot {
@@ -139,8 +137,13 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		markovManager.Add(miniMarkov)
 	}
 
-	context := strings.Join(contextWords[0:order], " ")
+	context := strings.Join(contextWords, " ")
+	fmt.Println(contextWords)
 	if gen := markovManager.Generate(context); gen != "" {
+		if trailing {
+			gen = "..." + gen
+		}
+		fmt.Println(gen)
 		mentionsMe := HasUser(msg.Mentions, session.State.User)
 		if !mentionsMe {
 			data := nextContribution.GetWillSet(msg.ChannelID)
