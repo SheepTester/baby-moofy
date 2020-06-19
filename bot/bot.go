@@ -7,8 +7,9 @@ import (
 	"syscall"
 	"math/rand"
 	"time"
-
 	"strings"
+	"regexp"
+	"strconv"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -18,17 +19,19 @@ import (
 
 var channelLastWords *ChannelComm
 var nextContribution *ChannelComm
+var channelCooldowns *ChannelComm
 var markovManager *markov.MarkovComm
 
 var order int
-
 var defaultDelay time.Duration
+var prefix string
 
 type BotOptions struct {
 	MarkovPath string
 	Token string
 	MarkovOrder int
 	DefaultDelay time.Duration
+	Prefix string
 }
 
 func Start(options *BotOptions) {
@@ -36,6 +39,7 @@ func Start(options *BotOptions) {
 
 	order = options.MarkovOrder
 	defaultDelay = options.DefaultDelay
+	prefix = options.Prefix
 
 	var err error
 
@@ -44,6 +48,9 @@ func Start(options *BotOptions) {
 
 	nextContribution = NewChannelData(time.Now())
 	defer nextContribution.Close()
+
+	channelCooldowns = NewChannelData(defaultDelay)
+	defer channelCooldowns.Close()
 
 	markovManager, err = markov.NewMarkovManagerFromFile(&markov.SaveOptions{
 		Path: options.MarkovPath,
@@ -96,7 +103,13 @@ func trackWords(channelID string, words []string, merge bool) ([]string, []strin
 
 func respond(session *discordgo.Session, msg *discordgo.MessageCreate, text string) {
 	session.ChannelMessageSend(msg.ChannelID, text)
-	nextContribution.Set(msg.ChannelID, time.Now().Add(defaultDelay))
+	data := channelCooldowns.Get(msg.ChannelID)
+	delay, ok := data.(time.Duration)
+	if !ok {
+		fmt.Println("Didn't get a Duration??", data)
+		delay = defaultDelay
+	}
+	nextContribution.Set(msg.ChannelID, time.Now().Add(delay))
 
 	words, _ := utils.Simplify(text)
 	if len(words) > 0 {
@@ -105,10 +118,44 @@ func respond(session *discordgo.Session, msg *discordgo.MessageCreate, text stri
 	}
 }
 
+var channelCooldownSetterParser = regexp.MustCompile(`set channel cooldown to (\d+)s`)
+
+func considerCommand(session *discordgo.Session, msg *discordgo.MessageCreate, command string) bool {
+	if command == "help" {
+		respond(session, msg, `i have and so on up to also is the prefix btw
+then after prefix maybe put
+set channel cooldown to 3s
+for example and i will wait 3 seconds before yelling`)
+		return true
+	}
+	var match []string
+	match = channelCooldownSetterParser.FindStringSubmatch(command)
+	if match != nil {
+		seconds, err := strconv.Atoi(match[1])
+		if err != nil {
+			fmt.Println("Converting to num is oof", err)
+			return false
+		}
+		channelCooldowns.Set(msg.ChannelID, time.Duration(seconds) * time.Second)
+		respond(session, msg, "i will adjust my conceptualization speed accordingly")
+		return true
+	}
+	return false
+}
+
 func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	// Ignore self
 	if msg.Author.ID == session.State.User.ID {
 		return
+	}
+
+	if strings.HasPrefix(msg.Content, prefix) {
+		trimmed := strings.TrimSpace(strings.TrimPrefix(msg.Content, prefix))
+		if considerCommand(session, msg, trimmed) {
+			return
+		} else {
+			session.MessageReactionAdd(msg.ChannelID, msg.ID, "❓")
+		}
 	}
 
 	words, trailing := utils.Simplify(msg.Content)
@@ -138,12 +185,10 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	}
 
 	context := strings.Join(contextWords, " ")
-	fmt.Println(contextWords)
 	if gen := markovManager.Generate(context); gen != "" {
 		if trailing {
 			gen = "..." + gen
 		}
-		fmt.Println(gen)
 		mentionsMe := HasUser(msg.Mentions, session.State.User)
 		if !mentionsMe {
 			data := nextContribution.GetWillSet(msg.ChannelID)
