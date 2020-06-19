@@ -149,7 +149,7 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 		return
 	}
 
-	if strings.HasPrefix(msg.Content, prefix) {
+	if !msg.Author.Bot && strings.HasPrefix(msg.Content, prefix) {
 		trimmed := strings.TrimSpace(strings.TrimPrefix(msg.Content, prefix))
 		if considerCommand(session, msg, trimmed) {
 			return
@@ -167,22 +167,24 @@ func MessageCreate(session *discordgo.Session, msg *discordgo.MessageCreate) {
 	// Stores last words sent in channel
 	sequence, contextWords := trackWords(msg.ChannelID, words, trailing)
 
-	// Do not learn from bots
-	if !msg.Author.Bot {
-		miniMarkov := make(markov.Markov)
-		for i, word := range sequence {
-			if i >= order {
-				context := strings.Join(sequence[i-order:i], " ")
-				frequencies, ok := miniMarkov[context]
-				if !ok {
-					frequencies = make(map[string]int)
-					miniMarkov[context] = frequencies
-				}
-				frequencies[word]++
-			}
-		}
-		markovManager.Add(miniMarkov)
+	// Do not learn from bots nor respond to them
+	if msg.Author.Bot {
+		return
 	}
+
+	miniMarkov := make(markov.Markov)
+	for i, word := range sequence {
+		if i >= order {
+			context := strings.Join(sequence[i-order:i], " ")
+			frequencies, ok := miniMarkov[context]
+			if !ok {
+				frequencies = make(map[string]int)
+				miniMarkov[context] = frequencies
+			}
+			frequencies[word]++
+		}
+	}
+	markovManager.Add(miniMarkov)
 
 	context := strings.Join(contextWords, " ")
 	if gen := markovManager.Generate(context); gen != "" {
