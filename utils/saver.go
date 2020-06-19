@@ -17,11 +17,3 @@ func Saver(path string, channel <-chan interface{}) {
 		}
 	}
 }
-
-func Load(path string) (output *interface{}, err error) {
-	data, err := ioutil.ReadFile(path)
-	if err == nil {
-		err = json.Unmarshal(data, output)
-	}
-	return
-}

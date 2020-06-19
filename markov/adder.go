@@ -3,6 +3,9 @@ package markov
 import (
 	"time"
 	"github.com/SheepTester/baby-moofy/utils"
+	"fmt"
+	"io/ioutil"
+	"encoding/json"
 )
 
 type MarkovComm struct {
@@ -84,14 +87,14 @@ func markovManager(markov Markov, comm *markovManagerComm, saveOpts *SaveOptions
 			}
 		case <- timerChan:
 			if needSaving {
-				saveChan <- CloneMarkov(markov)
+				saveChan <- markov.Clone()
 				needSaving = false
 			}
 		}
 	}
 	// Save one last time
 	if saveOpts != nil {
-		saveChan <- CloneMarkov(markov)
+		saveChan <- markov.Clone()
 	}
 	close(comm.generated)
 }
@@ -104,16 +107,21 @@ func NewMarkovManager(markov Markov, saveOpts *SaveOptions) *MarkovComm {
 	return &MarkovComm{addChan, contextChan, generatedChan}
 }
 
-func NewMarkovManagerFromFile(saveOpts *SaveOptions) (comm *MarkovComm, err error) {
-	data, _ := utils.Load(saveOpts.Path)
-	var markov Markov
-	ok := false
-	if data != nil {
-		markov, ok = (*data).(Markov)
+func LoadMarkov(path string) (markov Markov, err error) {
+	markov = make(Markov)
+	data, err := ioutil.ReadFile(path)
+	if err == nil {
+		err = json.Unmarshal(data, &markov)
 	}
-	if !ok {
-		markov = make(Markov)
-	}
-	comm = NewMarkovManager(markov, saveOpts)
 	return
+}
+
+func NewMarkovManagerFromFile(saveOpts *SaveOptions) (*MarkovComm, error) {
+	markov, err := LoadMarkov(saveOpts.Path)
+	if err != nil {
+		fmt.Println("Something went wrong with getting the markov frequencies file.")
+		return nil, err
+	} else {
+		return NewMarkovManager(markov, saveOpts), nil
+	}
 }

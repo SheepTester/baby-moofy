@@ -8,10 +8,10 @@ import (
 
 var order int = 3
 
-type Frequencies = map[string]int
+type Frequencies map[string]int
 
 // Maps a sequence of strings (joined by a space) to a map of next words and frequencies
-type Markov = map[string]Frequencies
+type Markov map[string]Frequencies
 
 func generate(markov Markov, context string, loud bool) string {
 	var builder strings.Builder
@@ -64,7 +64,7 @@ func GenerateLoud(markov Markov, context string) string {
 	return generate(markov, context, true)
 }
 
-func CloneMarkov(markov Markov) Markov {
+func (markov Markov) Clone() Markov {
 	newMarkov := make(Markov)
 	for context, frequencies := range markov {
 		newFrequencies := make(Frequencies)
