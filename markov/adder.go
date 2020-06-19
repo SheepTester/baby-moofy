@@ -2,6 +2,7 @@ package markov
 
 import (
 	"time"
+	"github.com/SheepTester/baby-moofy/utils"
 )
 
 type MarkovComm struct {
@@ -36,13 +37,13 @@ type SaveOptions struct {
 }
 
 func markovManager(markov Markov, comm *markovManagerComm, saveOpts *SaveOptions) {
-	var saveChan chan Markov
+	var saveChan chan interface{}
 	var timer *time.Timer
 	var timerChan <-chan time.Time
 	if saveOpts != nil {
-		saveChan = make(chan Markov, 100)
+		saveChan = make(chan interface{}, 100)
 		defer close(saveChan)
-		go MarkovSaver(saveOpts.Path, saveChan)
+		go utils.Saver(saveOpts.Path, saveChan)
 
 		timer = time.NewTimer(saveOpts.Delay)
 		timerChan = timer.C
@@ -104,9 +105,15 @@ func NewMarkovManager(markov Markov, saveOpts *SaveOptions) *MarkovComm {
 }
 
 func NewMarkovManagerFromFile(saveOpts *SaveOptions) (comm *MarkovComm, err error) {
-	markov, err := LoadMarkov(saveOpts.Path)
-	if err == nil {
-		comm = NewMarkovManager(markov, saveOpts)
+	data, _ := utils.Load(saveOpts.Path)
+	var markov Markov
+	ok := false
+	if data != nil {
+		markov, ok = (*data).(Markov)
 	}
+	if !ok {
+		markov = make(Markov)
+	}
+	comm = NewMarkovManager(markov, saveOpts)
 	return
 }
